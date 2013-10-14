@@ -7,7 +7,7 @@
     <style type="text/css">
         body{
             padding: 20px 80px;
-            font-size: 20px;
+            font-size: 18px;
             background-color: #efefef;
         }
 
@@ -15,14 +15,12 @@
             margin-bottom: 10px;
         }
 
-        .field > * {
-
-        }
-
         .field >  label{
             display: inline-block;
             vertical-align: middle;
-            width: 80px;
+            width: 100px;
+            text-align: right;
+            margin-right: 10px;
         }
 
         .field >  input,
@@ -37,9 +35,6 @@
             width: auto;
         }
 
-        [disabled="disabled"]{
-            color: #ccc;
-        }
     </style>
 
     <script src="../lib/jquery-1.10.2.min.js"></script>
@@ -50,35 +45,81 @@
     <script type="text/javascript">
 
         $(document).ready(function(){
+
             var userModel = new Backbone.Model({
-                name : "Joe Smith",
+                firstName : "Joe",
+                lastName : "Smith",
                 job : 'Programmer',
                 email : "joe.smith@inter.net",
                 enabled : true
             });
 
+            var linkCollection = new Backbone.Collection([
+                {
+                    id : 'google',
+                    label : 'Google',
+                    url : 'http://google.com'
+                },
+
+                {
+                    id : 'aristobot',
+                    label : 'Aristobot Games',
+                    url : 'http://aristobotgames.com'
+                },
+
+                {
+                    id : 'wikipedia',
+                    label : 'Wikipedia',
+                    url : 'http://wikipedia.com'
+                },
+
+                {
+                    id : 'github',
+                    label: 'Github',
+                    url : 'https://github.com'
+                }
+
+            ]);
+
             var modelView = new Backbone.View({
                 el : '#modelView',
                 model : userModel,
                 dataBindings : {
-                    //Basic One way binding
-                    '#user .name' : 'name',
-                    '#user .email' : 'email',
-                    '#user .job' : 'job',
-
-                    //One way binding using function and negation
-                    '[href] #user .email' : function(){ return 'mailto:'+this.get('email'); },
-                    '[disabled] #user' : '!enabled',
+                    //One way bindings
+                    '.full-name' : '{firstName} {lastName}',
+                    'a.email' : '{email}',
+                    '[href] a.email' : 'mailto:{email}',
+                    'span.job' : '{job}',
+                    '[visible] #user' : '{enabled}',
 
                     //Two way bindings
-                    '[keyup@value] #user-edit input.name' : 'name',
-                    '[keyup@value] #user-edit input.email' : 'email',
-                    '[@value] #user-edit select.job' : 'job',
-                    '[@checked] #user-edit input.enabled' : 'enabled'
+                    '[keyup@value] input.first-name' : '{firstName}',
+                    '[keyup@value] input.last-name' : '{lastName}',
+                    '[@value] input.email' : '{email}',
+                    '[@value] select.job' : '{job}',
+                    '[@checked] input.enabled' : '{enabled}'
+                }
+            }).render();
+
+
+            var collectionView = new Backbone.View({
+                el : '#collectionView',
+                collection : linkCollection,
+                dataBindings : {
+                    //Specific Model Bindings
+                    'a.favorite' : '[aristobot]{label}',
+                    '[href] a.favorite' : '[aristobot]{url}',
+
+                    //Recursive Model Bindings
+                    'ul.links > li' : {
+                        '[data-id]' : '{id}',
+                        'a.link' : '{label}',
+                        '[href] a.link' : '{url}'
+                    }
                 }
             });
 
-            modelView.render();
+            collectionView.render();
         });
 
 
@@ -94,12 +135,22 @@
 
         <h2>Model Binding</h2>
 
+        <p id="user">
+            <strong class="full-name"></strong> <br/>
+            <span class="job"></span> <br/>
+            <a class="email"></a>
+        </p>
 
         <div id="user-edit">
 
             <div class="field">
-                <label>Name: </label>
-                <input class="name" type="text"/>
+                <label>First Name: </label>
+                <input class="first-name" type="text"/>
+            </div>
+
+            <div class="field">
+                <label>Last Name: </label>
+                <input class="last-name" type="text"/>
             </div>
 
             <div class="field">
@@ -122,14 +173,23 @@
             </div>
         </div>
 
-        <p id="user">
-            <strong class="name"></strong> <br/>
-            <span class="job"></span> <br/>
-            <a class="email"></a>
+    </div>
 
+    <div id="collectionView">
+
+        <h2>Collection Binding</h2>
+
+        <p>
+            <strong>Favorite Link:</strong>
+            <a class="favorite"></a>
         </p>
 
-
+        <ul class="links">
+            <li><a class="link"></a></li>
+            <li><a class="link"></a></li>
+            <li><a class="link"></a></li>
+            <li><a class="link"></a></li>
+        </ul>
     </div>
 
 </body>

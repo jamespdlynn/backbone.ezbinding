@@ -20,6 +20,7 @@
 }(this, function(_, Backbone) {
 
     Backbone.EZBinder = function(el){
+        this._bindings = {};
         this.el = el || 'body';
     };
 
@@ -27,33 +28,43 @@
 
         _bindings : {},
 
-        bind : function (model, property, selector, attr, bidirectional, bidirectionalEvent, autoRender){
+        bind : function (model, property, selector, attr, bidirectional, autoRender){
 
             if  (!model || !(model instanceof Backbone.Model)){
                 throw new Error("Trying to bind an invalid model instance");
             }
 
-            attr = attr || 'text';
-            bidirectional = !!bidirectional;
-            bidirectionalEvent = bidirectionalEvent || 'change';
+            selector = selector || '';
+            attr = attr || '';
             autoRender = (autoRender !== undefined) ? autoRender : true;
 
-            var negate = false;
-            var isFunction = false;
-            if (typeof property == 'string'){
-                negate = property.charAt(0) == '!';
-                if (negate){
-                    property = property.substring(1);
+            var triggers = null,
+                negate = false;
+
+            if (typeof property === 'string'){
+                triggers = [property];
+            }
+            else if (typeof property === 'object'){
+                triggers = property.triggers || null;
+                negate = !!property.negate;
+                property = property.property;
+            }
+
+
+            if (typeof property !== 'string' && typeof property !== 'function'){
+                throw new Error("Attempting to bind to an invalid property");
+            }
+            else if (typeof property == 'function' && Boolean(bidirectional)){
+                throw new Error("Cannot bidirectionally bind to a property that is a function");
+            }
+
+
+            if (triggers){
+                for (var i=0; i < triggers.length; i++){
+                    if (!model.has(triggers[i])){
+                        console.warn("Attempting to bind to undefined model property: "+triggers[i]);
+                    }
                 }
-            }
-            else if (typeof property == 'function'){
-               isFunction = true;
-               if (bidirectional){
-                   throw new Error("Cannot bidirectionally bind to a property that is a function");
-               }
-            }
-            else{
-                throw new Error("Trying to bind to an invalid property");
             }
 
             var binding = {
@@ -61,8 +72,8 @@
                 property : property,
                 selector : selector,
                 attr : attr,
-                bidirectional : bidirectional,
-                isFunction : isFunction,
+                bidirectional : !!bidirectional,
+                triggers : triggers,
                 negate :  negate
             };
 
@@ -72,80 +83,130 @@
 
             if (!bindings){
                 //If we have no bindings for this model add listeners
-                bindings = [binding];
                 this.listenTo(model, 'change', this._onModelChange, this);
                 this.listenTo(model, 'bind', this._onModelBind, this);
-            }else{
+                bindings = [binding];
+            }
+
+            else{
                 //Remove duplicates
-                bindings = _.without(bindings, _.findWhere(bindings, {property: property, selector : selector, attr : attr}));
+                bindings = _.without(bindings, _.findWhere(bindings, {selector : selector, attr : attr}));
                 bindings.push(binding);
             }
 
-            if (typeof property === 'string' && model.get(property) === undefined){
-                console.warn("Attempting to bind to a model that does not have the declared property: '"+property+"'.");
+            this._bindings[model.cid] = bindings;
+
+            //If binding is bidirectional add DOM Listener
+            if (!!bidirectional){
+                var eventType = (typeof bidirectional === 'string') ? bidirectional : 'change';
+                var eventName = eventType+'.ezBinder.'+model.cid+'.'+attr;
+                this.$el.on(eventName, selector, binding ,this._onElementChange);
             }
-            else if (autoRender){
+
+            if (autoRender){
                 this._renderBinding(binding);
             }
 
-            if (bidirectional){
-                var evtName = bidirectionalEvent+'.dataBinder.'+model.cid;
-                this.$el.on(evtName, selector, binding ,this._onElementChange);
-            }
-
-            this._bindings[model.cid] = bindings;
         },
 
-        unbind : function (model, property, selector, attr){
+        unbind : function (model, selector, attr){
 
             if  (!model || !(model instanceof Backbone.Model)){
                 throw new Error("Invalid model passed as argument");
             }
 
-            attr = attr || 'text';
-            var bindings = this._bindings;
+            selector = selector || '';
+            attr = attr || '';
 
-            if (bindings && bindings[model.cid] && bindings[model.cid][property]){
-                var arr = bindings[model.cid][property];
-                var obj = _.findWhere(arr, {selector : selector, attr : attr});
+            var bindings = this._bindings[model.cid];
+
+            if (bindings){
 
 
-                //If array is empty then delete this binding from the models binding
-                bindings[model.cid][property] = (arr.length <= 1) ? undefined : _.without(arr, obj);
+                var matchingBinding =  _.findWhere(bindings, {selector : selector, attr : attr});
 
-                //If model has no more bindings then remove the event listener
-                if (_.isEmpty(bindings[model.cid])){
-                    bindings[model.cid] = undefined;
-                    this.stopListening(model, 'change', this._onModelChange);
+                if (matchingBinding){
+
+                    bindings = _.without(matchingBinding);
+
+                    //If model has no more bindings then remove the event listeners
+                    if (bindings.length == 0){
+                        bindings = undefined;
+                        this.stopListening(model, 'change', this._onModelChange);
+                        this.stopListening(model, 'bind', this._onModelBind);
+                    }
+
+                    if (matchingBinding.bidirectional){
+                        this.$el.off('.ezBinder.'+model.cid+'.'+attr, selector, this._onElementChange);
+                    }
+
+                    this._bindings[model.cid] = bindings;
+
                 }
-
-                if (obj.bidirectional){
-                    var eventName = '.dataBinder.'+model.cid;
-                    this.$el.off(eventName, selector ,this._onElementChange);
+                else{
+                    console.warn("Could not unbind from model: No matching binding for: '"+selector+"' '"+attr+"'");
                 }
             }
             else {
-                console.warn("Could not unbind model property: '"+property+"' ")
+                console.warn("Could not unbind from model: Model has no active bindings");
             }
 
         },
 
         unbindAll : function (model){
 
-            if  (!model || !(model instanceof Backbone.Model)){
+            if  (!model && !(model instanceof Backbone.Model)){
                 throw new Error("Invalid model passed as argument");
             }
 
-            var bindings = this._bindings;
+            var bindings = this._bindings[model.cid];
 
             if (bindings){
-                bindings[model.cid] = undefined;
-                this.stopListening(model, 'change', this._onModelChange);
+                bindings = undefined;
 
-                var eventName = '.dataBinder.'+model.cid;
-                this.$el.off(eventName,this._onElementChange);
+                this.stopListening(model, 'change', this._onModelChange);
+                this.stopListening(model, 'bind', this._onModelBind);
+
+                this.$el.off('.ezBinder.'+model.cid,this._onElementChange);
+
+                this._bindings[model.cid] = bindings;
             }
 
+        },
+
+        _onModelChange : function(model){
+            var cid = model.cid;
+            var bindings = this._bindings[cid];
+            var changed = _.keys(model.changed);
+
+            if (!bindings){
+                console.warn("No bindings found on target for model: '"+cid+'"');
+            }
+
+            var self = this;
+
+            _.each(bindings, function(binding){
+
+                var triggers = binding.triggers;
+
+                if (!triggers || _.intersection(triggers, changed).length > 0){
+                    self._renderBinding(binding);
+                }
+            });
+        },
+
+        _onModelBind : function (model){
+            var cid = model.cid;
+            var bindings = this._bindings[cid];
+
+            if (!bindings){
+                console.warn("No bindings found on target for model: '"+cid+'"');
+            }
+
+            var self = this;
+            _.each(bindings, function(binding){
+                self._renderBinding(binding);
+            });
         },
 
         _renderBinding: function(binding){
@@ -164,11 +225,8 @@
             if (element.length > 0){
 
                 switch (attr){
-                    case 'value':
-                    case 'val' :
-                        element.val(value);
-                        break;
 
+                    case '':
                     case 'text':
                         element.text(value);
                         break;
@@ -177,18 +235,24 @@
                         element.html(value);
                         break;
 
+                    case 'value':
+                    case 'val' :
+                        element.val(value);
+                        break;
+
                     case 'width' :
                     case 'height' :
                     case 'selectedIndex':
-                        element.prop(attr, value);
-                        break;
-
                     case 'selected':
                     case 'checked':
                     case 'readonly' :
-                    case 'visible':
-                        value = binding.negate ? !(!!value) : !!value;
+                    case 'disabled' :
                         element.prop(attr, value);
+                        break;
+
+                    case 'display':
+                    case 'visible':
+                        element.toggle(value);
                         break;
 
 
@@ -201,43 +265,6 @@
             }
         },
 
-        _onModelChange : function(evt){
-            var cid = evt.cid;
-            var bindings = this._bindings[cid];
-            var changed = evt.changed;
-
-            if (!bindings){
-                throw new Error("No bindings found on target for model: '"+cid+'"');
-            }
-
-            var self = this;
-            _.each(changed, function(value, property){
-                var filtered = _.where(bindings,{property:property});
-
-                _.each(filtered, function(binding){
-                    self._renderBinding(binding)
-                });
-            });
-
-            _.each(_.where(bindings,{isFunction:true}), function(binding){
-                self._renderBinding(binding)
-            });
-        },
-
-        _onModelBind : function (evt){
-            var model = evt;
-            var cid = model.cid;
-            var bindings = this._bindings;
-
-            if (!bindings|| !bindings[cid]){
-                throw new Error("No bindings found on target for model: '"+cid+'"');
-            }
-
-            var self = this;
-            _.each(bindings[cid], function(binding){
-               self._renderBinding(binding);
-            });
-        },
 
         _onElementChange : function (evt){
             var model = evt.data.model;
@@ -249,6 +276,7 @@
             var value;
 
             switch (attr){
+                case '':
                 case 'text':
                 case 'html':
                     value = element.text();
@@ -265,12 +293,17 @@
                 case 'selected':
                 case 'checked':
                 case 'readonly' :
+                case 'disabled' :
+                   value = element.prop(attr);
+                   break;
+
+                case 'display':
                 case 'visible':
-                    value = element.prop(attr);
-                    break;
+                   value = element.is(':visible');
+                   break;
 
                 default:
-                    value = element.attr(attr);
+                   value = element.attr(attr);
             }
 
             var valueType = typeof (model.get(property));
@@ -290,7 +323,67 @@
     var delegateEvents = Backbone.View.prototype.delegateEvents;
 
     var clean = function (str){
-        return str.replace(/[|&;$%@"\{\}\\[\]<>()+,]/g, "");
+        return str.replace(/[|;"'\{\}\[\]<>()+,]/g, "");
+    };
+
+    var trim = function (str) {
+        return Backbone.$.trim(str);
+    };
+
+    var logicalOperators = ['==', '===', '!=', '!==', '>', '<', '<=', '>=', '!', '!!', '&', '&&', '|', '||', '+', '-', '*', '/', '%'];
+
+    var parsePropertyObject = function (str){
+
+        var triggers = str.match(/{([^}]*)}/g);
+        var negate = str.charAt(0) == '!';
+        var property;
+
+        if (triggers.length && (triggers[0].length == str.length || (negate && triggers[0].length == str.length-1))){
+            property = clean(trim(triggers[0]));
+            triggers = [property];
+
+        }
+        else{
+            negate = false;
+            triggers = _.map(triggers, function(trigger){
+                str = str.replace(trigger, '{binding}');
+                return clean(trim(trigger));
+            });
+
+            var split = str.split('{binding}');
+            var funcStr = 'return ';
+
+            for (var i=0; i < split.length; i++){
+
+               if (split[i].length){
+                   if (_.contains(logicalOperators, trim(split[i]))){
+                       funcStr += split[i];
+                   }
+                   else{
+                       funcStr += (i > 0 ? ' + ' : '') + '"' + _.escape(split[i]) + '"' + (i < triggers.length ? ' + ' : '');
+                   }
+                }
+
+                if (i < triggers.length){
+                    funcStr += 'this.get(\''+triggers[i]+'\')';
+                }
+
+            }
+
+            try{
+                property = new Function(funcStr);
+            }
+            catch(e){
+                throw new Error("Unable to parse Binding Value: "+str);
+            }
+
+        }
+
+        return {
+            property : property,
+            negate : negate,
+            triggers : triggers
+        };
     };
 
     _.extend(Backbone.View.prototype, Backbone.EZBinder.prototype, {
@@ -300,22 +393,37 @@
             this.attachBindings();
         },
 
-        attachBindings: function(dataBindings) {
+        attachBindings: function(modelBindings) {
 
-            dataBindings = dataBindings || _.result(this.options, 'dataBindings') || _.result(this, 'dataBindings');
+            modelBindings = modelBindings || _.result(this.options, 'dataBindings') || _.result(this, 'dataBindings');
 
-            if (!dataBindings || _.isEmpty(dataBindings) || (!this.model && !this.collection)){
+            if (!modelBindings || _.isEmpty(modelBindings) || (!this.model && !this.collection)){
                return this;
             }
 
             this.detachBindings();
+            this._bindings = {};
 
-            for (var key in dataBindings){
+            if (this.model instanceof Backbone.Model){
+                this._attachModelBindings(this.model, modelBindings);
+            }
+            else if (this.model instanceof Backbone.Collection){
+                this._attachCollectionBindings(this.model, modelBindings);
+            }
+            else if (this.collection instanceof Backbone.Collection){
+                this._attachCollectionBindings(this.collection, modelBindings);
+            }
+
+            return this;
+        },
+
+        _attachModelBindings : function(model, modelBindings){
+
+            for (var key in modelBindings){
 
                 var selector='',
                     attr='',
-                    bidirectional=false,
-                    bidirectionalEvent='';
+                    bidirectional= false;
 
                 if (typeof key !== 'string'){
                     throw new Error("Invalid Model Binding String: '"+key+"'");
@@ -328,68 +436,152 @@
                     }
 
                     attr = key.substring(1, endIndex);
-                    selector = Backbone.$.trim(key.substring(endIndex+1));
+                    selector = trim(key.substring(endIndex+1));
 
                     bidirectional = attr.indexOf('@') >= 0;
-
                     if (bidirectional){
                         var split = attr.split('@');
 
-                        if (split.length >= 1 && split[1]){
-                            bidirectionalEvent = Backbone.$.trim(split[0]);
-                            attr = Backbone.$.trim(split[1]);
-                        }else{
-                            attr = Backbone.$.trim(split[0]);
+                        if (split[0].length){
+                            bidirectional = clean(trim(split[0]));
                         }
+
+                        attr = trim(split[1]);
+
                     }
+
+                    attr = clean(attr);
                 }
                 else{
-                   selector = Backbone.$.trim(key);
+                    selector = trim(key);
                 }
 
+                var value = modelBindings[key];
+                var property = (typeof value === 'string') ? parsePropertyObject(value) : value;
 
-                var property = dataBindings[key];
 
-                if (this.model instanceof Backbone.Model){
-                    this.bind(this.model, property, selector, clean(attr), bidirectional, clean(bidirectionalEvent));
-                }
-                else if (this.model instanceof Backbone.Collection || this.collection instanceof Backbone.Collection){
-                    var collection = this.model || this.collection;
-                    var self = this;
+                this.bind(model, property, selector, attr, bidirectional, false);
+            }
 
-                    if (modelId){
-                        self.bind(collection.get(clean(modelId)),clean(property), selector, clean(attr), bidirectional, clean(bidirectionalEvent), false)
+            return this;
+        },
+
+        _attachCollectionBindings : function(collection, collectionBindings){
+
+            this.listenTo(collection,'remove', function(model){
+                this.unbindAll(model);
+            });
+
+            this.listenTo(collection,'reset', function(){
+                this.detachBindings();
+            });
+
+
+            for (var collectionKey in collectionBindings){
+
+                var value = collectionBindings[collectionKey];
+
+
+                if (typeof value === 'string'){
+                    var bracket = value.match(/[^[\]]+(?=])/);
+                    if (bracket){
+
+
+                        var id = clean(bracket[0]);
+                        var model = collection.get(id);
+                        if (!model && !isNaN(id)){
+                           model = collection.at(id);
+                        }
+
+                        if (!model){
+                            throw new Error("Cannot bind to collection model: No such model with id: '"+id+'"');
+                        }
+
+                        var modelBindings = {};
+                        modelBindings[collectionKey] = value.replace('['+bracket[0]+']', '');
+
+                        return this._attachModelBindings(model, modelBindings);
                     }
                     else{
-                        _.each(collection.models, function(model, index){
-                            self.bind(model, property, selector+":nth-child("+(index+1)+")", clean(attr), bidirectional, clean(bidirectionalEvent), false);
-                        });
+                        value = {'': value}; //convert value into model binding object
                     }
                 }
+                else if (typeof value === 'function'){
+                    value = {'': value};  //convert value into model binding object
+                }
 
+                if (typeof value !== 'object'){
+                    throw new Error("Cannot bind to collection model: Value '"+value+"' is an invalid type");
+                }
+
+                for (var i=0; i < collection.length; i++){
+
+                    var modelBindings = {};
+
+                    for (var modelKey in value){
+                        var attr = '';
+                        var selector = '';
+
+                        if (modelKey.charAt(0) == '['){
+                            var endIndex = key.indexOf(']');
+                            attr = trim(modelKey.substring(0, endIndex));
+                            selector = trim(modelKey.substring(endIndex+1));
+                        }
+                        else{
+                            selector = trim(modelKey);
+                        }
+
+                        var newKey = attr + " " + collectionKey + ":nth-of-type("+(i+1)+")" + " " + selector;
+                        modelBindings[newKey] = value[modelKey];
+                    }
+
+                    this._attachModelBindings(collection.at(i), modelBindings);
+                }
             }
+
+
+
+            return this;
         },
 
         detachBindings : function() {
+
+            if (_.isEmpty(this._bindings)) return this;
+
             if (this.model instanceof Backbone.Model){
                 this.unbindAll(this.model);
+                return this;
             }
-            else if (this.model instanceof Backbone.Collection || this.collection instanceof Backbone.Collection){
-                var collection = this.model || this.collection;
-                var self = this;
 
-                _.each(collection.models, function(model){
-                    self.unbindAll(model);
-                });
+            var collection;
+            if (this.model instanceof Backbone.Collection){
+                collection = this.model;
             }
+            else if (this.collection instanceof Backbone.Collection){
+                collection = this.collection;
+            }
+
+            var self = this;
+            _.each(collection.models, function(model){
+                self.unbindAll(model);
+            });
+
+            this.stopListening(collection, "remove");
+            this.stopListening(collection, "reset");
+
+            return this;
         },
 
         render : function(){
             if (this.model){
                  this.model.trigger('bind', this.model);
             }else if (this.collection){
-                this.collection.trigger('bind', this.model);
+                _.each(this.collection.models, function(model){
+                    model.trigger('bind', model);
+                });
             }
+
+            return this;
         }
 
     });
