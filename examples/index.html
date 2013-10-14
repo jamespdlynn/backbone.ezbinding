@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Backbone EZBindings Examples</title>
+    <style type="text/css">
+        body{
+            padding: 20px 80px;
+            font-size: 20px;
+            background-color: #efefef;
+        }
+
+        .field {
+            margin-bottom: 10px;
+        }
+
+        .field > * {
+
+        }
+
+        .field >  label{
+            display: inline-block;
+            vertical-align: middle;
+            width: 80px;
+        }
+
+        .field >  input,
+        .field > select{
+            display: inline-block;
+            vertical-align: middle;
+            width: 200px;
+            padding: 5px;
+        }
+
+        .field > .enabled{
+            width: auto;
+        }
+
+        [disabled="disabled"]{
+            color: #ccc;
+        }
+    </style>
+
+    <script src="../lib/jquery-1.10.2.min.js"></script>
+    <script src="../lib/underscore.js"></script>
+    <script src="../lib/backbone.js"></script>
+    <script src="../backbone.ezbinding.js"></script>
+
+    <script type="text/javascript">
+
+        $(document).ready(function(){
+            var userModel = new Backbone.Model({
+                name : "Joe Smith",
+                job : 'Programmer',
+                email : "joe.smith@inter.net",
+                enabled : true
+            });
+
+            var modelView = new Backbone.View({
+                el : '#modelView',
+                model : userModel,
+                dataBindings : {
+                    //Basic One way binding
+                    '#user .name' : 'name',
+                    '#user .email' : 'email',
+                    '#user .job' : 'job',
+
+                    //One way binding using function and negation
+                    '[href] #user .email' : function(){ return 'mailto:'+this.get('email'); },
+                    '[disabled] #user' : '!enabled',
+
+                    //Two way bindings
+                    '[keyup@value] #user-edit input.name' : 'name',
+                    '[keyup@value] #user-edit input.email' : 'email',
+                    '[@value] #user-edit select.job' : 'job',
+                    '[@checked] #user-edit input.enabled' : 'enabled'
+                }
+            });
+
+            modelView.render();
+        });
+
+
+
+
+    </script>
+
+</head>
+
+<body>
+    <h1>Backbone EZBindings Examples</h1>
+    <div id="modelView">
+
+        <h2>Model Binding</h2>
+
+
+        <div id="user-edit">
+
+            <div class="field">
+                <label>Name: </label>
+                <input class="name" type="text"/>
+            </div>
+
+            <div class="field">
+                <label>Job Title: </label>
+                <select class="job">
+                    <option value="Programmer">Programmer</option>
+                    <option value="Designer">Designer</option>
+                    <option value="Manager">Manager</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label>Email: </label>
+                <input class="email" type="text"/>
+            </div>
+
+            <div class="field">
+                <label>Enabled: </label>
+                <input class="enabled" type="checkbox"/>
+            </div>
+        </div>
+
+        <p id="user">
+            <strong class="name"></strong> <br/>
+            <span class="job"></span> <br/>
+            <a class="email"></a>
+
+        </p>
+
+
+    </div>
+
+</body>
