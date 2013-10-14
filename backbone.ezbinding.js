@@ -30,7 +30,7 @@
         bind : function (model, property, selector, attr, bidirectional, bidirectionalEvent, autoRender){
 
             if  (!model || !(model instanceof Backbone.Model)){
-                throw new Error("Invalid model passed as argument");
+                throw new Error("Trying to bind an invalid model instance");
             }
 
             attr = attr || 'text';
@@ -39,11 +39,21 @@
             autoRender = (autoRender !== undefined) ? autoRender : true;
 
             var negate = false;
+            var isFunction = false;
             if (typeof property == 'string'){
                 negate = property.charAt(0) == '!';
                 if (negate){
                     property = property.substring(1);
                 }
+            }
+            else if (typeof property == 'function'){
+               isFunction = true;
+               if (bidirectional){
+                   throw new Error("Cannot bidirectionally bind to a property that is a function");
+               }
+            }
+            else{
+                throw new Error("Trying to bind to an invalid property");
             }
 
             var binding = {
@@ -52,6 +62,7 @@
                 selector : selector,
                 attr : attr,
                 bidirectional : bidirectional,
+                isFunction : isFunction,
                 negate :  negate
             };
 
@@ -201,11 +212,15 @@
 
             var self = this;
             _.each(changed, function(value, property){
-                var arr = _.where(bindings,{property:property});
+                var filtered = _.where(bindings,{property:property});
 
-                _.each(arr, function(binding){
+                _.each(filtered, function(binding){
                     self._renderBinding(binding)
                 });
+            });
+
+            _.each(_.where(bindings,{isFunction:true}), function(binding){
+                self._renderBinding(binding)
             });
         },
 
