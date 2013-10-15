@@ -382,12 +382,13 @@
 
         delegateEvents : function(){
             delegateEvents.apply(this);
-            this.attachBindings();
+            this.attachBindings(null, false);
         },
 
-        attachBindings: function(modelBindings) {
+        attachBindings: function(modelBindings, autoRender) {
 
-            modelBindings = modelBindings || _.result(this.options, 'dataBindings') || _.result(this, 'dataBindings');
+            modelBindings = modelBindings || _.result(this.options, 'modelBindings') || _.result(this, 'modelBindings');
+            autoRender = (autoRender !== undefined) ? autoRender : true;
 
             if (!modelBindings || _.isEmpty(modelBindings) || (!this.model && !this.collection)){
                return this;
@@ -397,19 +398,19 @@
             this._bindings = {};
 
             if (this.model instanceof Backbone.Model){
-                this._attachModelBindings(this.model, modelBindings);
+                this._attachModelBindings(this.model, modelBindings, autoRender);
             }
             else if (this.model instanceof Backbone.Collection){
-                this._attachCollectionBindings(this.model, modelBindings);
+                this._attachCollectionBindings(this.model, modelBindings, autoRender);
             }
             else if (this.collection instanceof Backbone.Collection){
-                this._attachCollectionBindings(this.collection, modelBindings);
+                this._attachCollectionBindings(this.collection, modelBindings, autoRender);
             }
 
             return this;
         },
 
-        _attachModelBindings : function(model, modelBindings){
+        _attachModelBindings : function(model, modelBindings, autoRender){
 
             for (var key in modelBindings){
 
@@ -453,7 +454,7 @@
                     var property = (typeof value === 'string') ? parsePropertyObject(value) : value;
 
 
-                    this.bind(model, property, selector, attr, bidirectional, false);
+                    this.bind(model, property, selector, attr, bidirectional, autoRender);
                 }
 
             }
@@ -461,7 +462,7 @@
             return this;
         },
 
-        _attachCollectionBindings : function(collection, collectionBindings){
+        _attachCollectionBindings : function(collection, collectionBindings, autoRender){
 
             for (var collectionKey in collectionBindings){
 
@@ -486,7 +487,7 @@
 
                             modelBindings[collectionKey] = value.replace('['+bracket[0]+']', '');
 
-                            this._attachModelBindings(model, modelBindings);
+                            this._attachModelBindings(model, modelBindings, autoRender);
                             continue;
                         }
                         else{
@@ -527,7 +528,7 @@
 
                         }
 
-                        this._attachModelBindings(collection.at(i), modelBindings);
+                        this._attachModelBindings(collection.at(i), modelBindings, autoRender);
                     }
                 }
             }
@@ -548,14 +549,11 @@
 
             if (_.isEmpty(this._bindings)) return this;
 
-            if (this.model instanceof Backbone.Model){
-                this.unbindAll(this.model);
-                return this;
-            }
-
             this.unbindAll();
 
             if (this.model instanceof Backbone.Collection || this.collection instanceof Backbone.Collection){
+                var collection = this.model || this.collection;
+
                 this.stopListening(collection, "remove");
                 this.stopListening(collection, "reset");
             }
