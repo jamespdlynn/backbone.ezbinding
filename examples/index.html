@@ -11,7 +11,7 @@
             background-color: #efefef;
         }
 
-        .field {
+        .field, ul > li{
             margin-bottom: 10px;
         }
 
@@ -23,8 +23,7 @@
             margin-right: 10px;
         }
 
-        .field >  input,
-        .field > select{
+        .field >  input, .field > select{
             display: inline-block;
             vertical-align: middle;
             width: 200px;
@@ -57,7 +56,6 @@
             var linkCollection = new Backbone.Collection([
                 {
                     id : 'google',
-                    label : 'Google',
                     url : 'http://google.com'
                 },
 
@@ -69,13 +67,11 @@
 
                 {
                     id : 'wikipedia',
-                    label : 'Wikipedia',
                     url : 'http://wikipedia.com'
                 },
 
                 {
                     id : 'github',
-                    label: 'Github',
                     url : 'https://github.com'
                 }
 
@@ -107,13 +103,13 @@
                 collection : linkCollection,
                 dataBindings : {
                     //Specific Model Bindings
-                    'a.favorite' : '[aristobot]{label}',
-                    '[href] a.favorite' : '[aristobot]{url}',
+                    '[href] a#first-link' : '[0]{url}',
+                    '[href] a#aristobot-link' : '[aristobot]{url}',
 
                     //Recursive Model Bindings
                     'ul.links > li' : {
                         '[data-id]' : '{id}',
-                        'a.link' : '{label}',
+                        'a.link' : '{url}',
                         '[href] a.link' : '{url}'
                     }
                 }
@@ -136,8 +132,8 @@
         <h2>Model Binding</h2>
 
         <p id="user">
-            <strong class="full-name"></strong> <br/>
-            <span class="job"></span> <br/>
+            <strong class="full-name"></strong>&nbsp
+            <span class="job"></span>&nbsp
             <a class="email"></a>
         </p>
 
@@ -180,9 +176,11 @@
         <h2>Collection Binding</h2>
 
         <p>
-            <strong>Favorite Link:</strong>
-            <a class="favorite"></a>
+            <a id="first-link">First Link</a> &nbsp
+            <a id="aristobot-link">Aristobot Games</a>
         </p>
+
+
 
         <ul class="links">
             <li><a class="link"></a></li>

@@ -153,25 +153,30 @@
 
         },
 
-        unbindAll : function (model){
+        unbindAll : function (cid){
 
-            if  (!model && !(model instanceof Backbone.Model)){
-                throw new Error("Invalid model passed as argument");
-            }
+            var modelBindings = cid ? [this._bindings[cid]] : this._bindings;
 
-            var bindings = this._bindings[model.cid];
+            var self = this;
+            _.each(modelBindings, function(bindings, cid){
+                var model = bindings[0].model;
 
-            if (bindings){
-                bindings = undefined;
+                self.stopListening(model, 'change', self._onModelChange);
+                self.$el.off('.ezBinder.'+model.cid,self._onElementChange);
+                self._bindings[cid] = undefined;
+            });
+        },
 
-                this.stopListening(model, 'change', this._onModelChange);
-                this.stopListening(model, 'bind', this._onModelBind);
+        renderBindings : function (cid){
 
-                this.$el.off('.ezBinder.'+model.cid,this._onElementChange);
+            var modelBindings = cid ? [this._bindings[cid]] : this._bindings;
+            var self = this;
 
-                this._bindings[model.cid] = bindings;
-            }
-
+            _.each(modelBindings, function(bindings){
+                _.each(bindings, function(binding){
+                    self._renderBinding(binding);
+                });
+            });
         },
 
         _onModelChange : function(model){
@@ -195,20 +200,6 @@
             });
         },
 
-        _onModelBind : function (model){
-            var cid = model.cid;
-            var bindings = this._bindings[cid];
-
-            if (!bindings){
-                console.warn("No bindings found on target for model: '"+cid+'"');
-            }
-
-            var self = this;
-            _.each(bindings, function(binding){
-                self._renderBinding(binding);
-            });
-        },
-
         _renderBinding: function(binding){
 
             var selector = binding.selector;
@@ -224,6 +215,7 @@
 
             if (element.length > 0){
 
+                //noinspection FallthroughInSwitchStatementJS
                 switch (attr){
 
                     case '':
@@ -421,46 +413,49 @@
 
             for (var key in modelBindings){
 
-                var selector='',
-                    attr='',
-                    bidirectional= false;
+                if (modelBindings.hasOwnProperty(key)){
+                    var selector='',
+                        attr='',
+                        bidirectional= false;
 
-                if (typeof key !== 'string'){
-                    throw new Error("Invalid Model Binding String: '"+key+"'");
-                }
-
-                if (key.charAt(0) == '['){
-                    var endIndex = key.indexOf(']');
-                    if (endIndex < 0){
+                    if (typeof key !== 'string'){
                         throw new Error("Invalid Model Binding String: '"+key+"'");
                     }
 
-                    attr = key.substring(1, endIndex);
-                    selector = trim(key.substring(endIndex+1));
-
-                    bidirectional = attr.indexOf('@') >= 0;
-                    if (bidirectional){
-                        var split = attr.split('@');
-
-                        if (split[0].length){
-                            bidirectional = clean(trim(split[0]));
+                    if (key.charAt(0) == '['){
+                        var endIndex = key.indexOf(']');
+                        if (endIndex < 0){
+                            throw new Error("Invalid Model Binding String: '"+key+"'");
                         }
 
-                        attr = trim(split[1]);
+                        attr = key.substring(1, endIndex);
+                        selector = trim(key.substring(endIndex+1));
 
+                        bidirectional = attr.indexOf('@') >= 0;
+                        if (bidirectional){
+                            var split = attr.split('@');
+
+                            if (split[0].length){
+                                bidirectional = clean(trim(split[0]));
+                            }
+
+                            attr = trim(split[1]);
+
+                        }
+
+                        attr = clean(attr);
+                    }
+                    else{
+                        selector = trim(key);
                     }
 
-                    attr = clean(attr);
+                    var value = modelBindings[key];
+                    var property = (typeof value === 'string') ? parsePropertyObject(value) : value;
+
+
+                    this.bind(model, property, selector, attr, bidirectional, false);
                 }
-                else{
-                    selector = trim(key);
-                }
 
-                var value = modelBindings[key];
-                var property = (typeof value === 'string') ? parsePropertyObject(value) : value;
-
-
-                this.bind(model, property, selector, attr, bidirectional, false);
             }
 
             return this;
@@ -468,77 +463,82 @@
 
         _attachCollectionBindings : function(collection, collectionBindings){
 
+            for (var collectionKey in collectionBindings){
+
+                if (collectionBindings.hasOwnProperty(collectionKey)){
+
+                    var value = collectionBindings[collectionKey];
+                    var modelBindings = {};
+
+                    if (typeof value === 'string'){
+                        var bracket = value.match(/[^[\]]+(?=])/);
+                        if (bracket){
+
+                            var id = clean(bracket[0]);
+                            var model = collection.get(id);
+                            if (!model && !isNaN(id)){
+                                model = collection.at(id);
+                            }
+
+                            if (!model){
+                                throw new Error("Cannot bind to collection model: No such model with id: '"+id+'"');
+                            }
+
+                            modelBindings[collectionKey] = value.replace('['+bracket[0]+']', '');
+
+                            this._attachModelBindings(model, modelBindings);
+                            continue;
+                        }
+                        else{
+                            value = {'': value}; //convert value into model binding object
+                        }
+                    }
+                    else if (typeof value === 'function'){
+                        value = {'': value};  //convert value into model binding object
+                    }
+
+                    if (typeof value !== 'object'){
+                        throw new Error("Cannot bind to collection model: Value '"+value+"' is an invalid type");
+                    }
+
+                    for (var i=0; i < collection.length; i++){
+
+                        modelBindings = {};
+
+                        for (var modelKey in value){
+
+                            if (value.hasOwnProperty(modelKey)){
+                                var attr = '';
+                                var selector = '';
+
+                                if (modelKey.charAt(0) == '['){
+                                    var endIndex = modelKey.indexOf(']');
+                                    attr = trim(modelKey.substring(0, endIndex+1));
+                                    selector = trim(modelKey.substring(endIndex+1));
+                                }
+                                else{
+                                    selector = trim(modelKey);
+                                }
+
+
+                                var newKey = attr + " " + collectionKey + ":nth-of-type("+(i+1)+")" + " " + selector;
+                                modelBindings[newKey] = value[modelKey];
+                            }
+
+                        }
+
+                        this._attachModelBindings(collection.at(i), modelBindings);
+                    }
+                }
+            }
+
             this.listenTo(collection,'remove', function(model){
-                this.unbindAll(model);
+                this.unbindAll(model.cid);
             });
 
             this.listenTo(collection,'reset', function(){
                 this.detachBindings();
             });
-
-
-            for (var collectionKey in collectionBindings){
-
-                var value = collectionBindings[collectionKey];
-
-
-                if (typeof value === 'string'){
-                    var bracket = value.match(/[^[\]]+(?=])/);
-                    if (bracket){
-
-
-                        var id = clean(bracket[0]);
-                        var model = collection.get(id);
-                        if (!model && !isNaN(id)){
-                           model = collection.at(id);
-                        }
-
-                        if (!model){
-                            throw new Error("Cannot bind to collection model: No such model with id: '"+id+'"');
-                        }
-
-                        var modelBindings = {};
-                        modelBindings[collectionKey] = value.replace('['+bracket[0]+']', '');
-
-                        return this._attachModelBindings(model, modelBindings);
-                    }
-                    else{
-                        value = {'': value}; //convert value into model binding object
-                    }
-                }
-                else if (typeof value === 'function'){
-                    value = {'': value};  //convert value into model binding object
-                }
-
-                if (typeof value !== 'object'){
-                    throw new Error("Cannot bind to collection model: Value '"+value+"' is an invalid type");
-                }
-
-                for (var i=0; i < collection.length; i++){
-
-                    var modelBindings = {};
-
-                    for (var modelKey in value){
-                        var attr = '';
-                        var selector = '';
-
-                        if (modelKey.charAt(0) == '['){
-                            var endIndex = key.indexOf(']');
-                            attr = trim(modelKey.substring(0, endIndex));
-                            selector = trim(modelKey.substring(endIndex+1));
-                        }
-                        else{
-                            selector = trim(modelKey);
-                        }
-
-                        var newKey = attr + " " + collectionKey + ":nth-of-type("+(i+1)+")" + " " + selector;
-                        modelBindings[newKey] = value[modelKey];
-                    }
-
-                    this._attachModelBindings(collection.at(i), modelBindings);
-                }
-            }
-
 
 
             return this;
@@ -553,33 +553,18 @@
                 return this;
             }
 
-            var collection;
-            if (this.model instanceof Backbone.Collection){
-                collection = this.model;
-            }
-            else if (this.collection instanceof Backbone.Collection){
-                collection = this.collection;
-            }
+            this.unbindAll();
 
-            var self = this;
-            _.each(collection.models, function(model){
-                self.unbindAll(model);
-            });
-
-            this.stopListening(collection, "remove");
-            this.stopListening(collection, "reset");
+            if (this.model instanceof Backbone.Collection || this.collection instanceof Backbone.Collection){
+                this.stopListening(collection, "remove");
+                this.stopListening(collection, "reset");
+            }
 
             return this;
         },
 
         render : function(){
-            if (this.model){
-                 this.model.trigger('bind', this.model);
-            }else if (this.collection){
-                _.each(this.collection.models, function(model){
-                    model.trigger('bind', model);
-                });
-            }
+            this.renderBindings();
 
             return this;
         }
