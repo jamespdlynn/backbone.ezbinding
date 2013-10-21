@@ -19,15 +19,42 @@
     }
 }(this, function(_, Backbone) {
 
+    /**
+     * EZBinder constructor. Used when creating custom data bindings.
+     * @param {string|object} [el=document] Top level DOM element to which all attached bindings will be children of
+     * @constructor
+     */
     Backbone.EZBinder = function(el){
         this._bindings = {};
-        this.el = el || 'body';
+        this.$el =  el ? Backbone.$(el) : Backbone.$(document);
+
+        this.$ = function(selector){
+            return this.$el.find(selector);
+        }
     };
 
     _.extend(Backbone.EZBinder.prototype, Backbone.Events, {
 
         _bindings : {},
 
+        /**
+         * An object that defines the property related to the model we're binding
+         * @typedef PropertyObject
+         * @property {string|function} property The name of the property on the model we're binding to (can alternatively be sent as a function to be applied by the model when an associated trigger is fired)
+         * @property {boolean} [negate=false] Flag to determine to bind to the inverse value of this property, if said property is of a boolean type
+         * @property {triggers} [string[]] A list of properties on the model that will trigger this binding when changed (if none sent then any change to the model will trigger this binding)
+         */
+
+
+        /**
+         * Creates a binding between a model property and a DOM Node attribute
+         * @param {object} model Backbone Model we're binding to.
+         * @param {string | function | PropertyObject} property The model property we're binding to
+         * @param {string} [selectors] JQuery selector pointing towards DOM Node we're binding to (if none supplied the binding will point directly to this Binder's 'el' node)
+         * @param {string} [attr] Optional attribute or property of DOM Node we're binding to (if none defined we bind to the node's inner text)
+         * @param {boolean|string} [bidirectional=false] Flag that determines if this is a bidirectional (two way) binding. Parameter can also be sent as an event string such as 'keyup' if we want something other than the 'change' event to trigger the bidirectional bind
+         * @param {boolean} [autRender=true] Flag that tells the binder to attempt to immediately render this binding on its associated DOM Node property
+         */
         bind : function (model, property, selector, attr, bidirectional, autoRender){
 
             if  (!model || !(model instanceof Backbone.Model)){
@@ -41,15 +68,15 @@
             var triggers = null,
                 negate = false;
 
-            if (typeof property === 'string'){
-                triggers = [property];
-            }
-            else if (typeof property === 'object'){
-                triggers = property.triggers || null;
+            if (typeof property === 'object'){
+                triggers = property.triggers;
                 negate = !!property.negate;
                 property = property.property;
             }
 
+            if (typeof property === 'string' && !triggers){
+                triggers = [property];
+            }
 
             if (typeof property !== 'string' && typeof property !== 'function'){
                 throw new Error("Attempting to bind to an invalid property");
@@ -59,6 +86,7 @@
             }
 
 
+
             if (triggers){
                 for (var i=0; i < triggers.length; i++){
                     if (!model.has(triggers[i])){
@@ -66,6 +94,7 @@
                     }
                 }
             }
+
 
             var binding = {
                 model : model,
@@ -107,27 +136,35 @@
                 this._renderBinding(binding);
             }
 
+            return this;
+
         },
 
-        unbind : function (model, selector, attr){
-
-            if  (!model || !(model instanceof Backbone.Model)){
-                throw new Error("Invalid model passed as argument");
-            }
+        /**
+         * Remove a single data binding
+         * @param {number} cid  The id of the model this binding belongs to
+         * @param {string} [selector] selector JQuery selector attached to this DOM binding
+         * @param {string} [attr] The DOM Node attribute or property attached to this DOM binding
+         * @returns {*}
+         */
+        unbind : function (cid, selector, attr){
 
             selector = selector || '';
             attr = attr || '';
 
-            var bindings = this._bindings[model.cid];
+            var bindings = this._bindings[cid];
 
             if (bindings){
-
 
                 var matchingBinding =  _.findWhere(bindings, {selector : selector, attr : attr});
 
                 if (matchingBinding){
 
-                    bindings = _.without(matchingBinding);
+                    var model = matchingBinding.model;
+
+                    bindings = _.filter(bindings, function(binding){
+                        return binding.selector != selector || binding.attr != attr;
+                    });
 
                     //If model has no more bindings then remove the event listeners
                     if (bindings.length == 0){
@@ -137,10 +174,10 @@
                     }
 
                     if (matchingBinding.bidirectional){
-                        this.$el.off('.ezBinder.'+model.cid+'.'+attr, selector, this._onElementChange);
+                        this.$el.off('.ezBinder.'+cid+'.'+attr, selector, this._onElementChange);
                     }
 
-                    this._bindings[model.cid] = bindings;
+                    this._bindings[cid] = bindings;
 
                 }
                 else{
@@ -151,22 +188,39 @@
                 console.warn("Could not unbind from model: Model has no active bindings");
             }
 
+            return this;
         },
 
+        /**
+         * Remove all bindings, or all bindings for a particular model
+         * @param {number} [cid] Optional id for the model of the bindings we want to remove, if none passed remove all binding for all models
+         * @returns {*}
+         */
         unbindAll : function (cid){
 
             var modelBindings = cid ? [this._bindings[cid]] : this._bindings;
 
             var self = this;
             _.each(modelBindings, function(bindings, cid){
-                var model = bindings[0].model;
 
-                self.stopListening(model, 'change', self._onModelChange);
-                self.$el.off('.ezBinder.'+model.cid,self._onElementChange);
-                self._bindings[cid] = undefined;
+                if (bindings){
+                    var model = bindings[0].model;
+
+                    self.stopListening(model, 'change', self._onModelChange);
+                    self.$el.off('.ezBinder.'+cid,self._onElementChange);
+                    self._bindings[cid] = undefined;
+                }
+
             });
+
+            return this;
         },
 
+        /**
+         * Render all current bindings upon their given DOM Nodes
+         * @param {number} [cid] Optional id for the model of the bindings we want to render, if none passed render all bindings for all models
+         * @returns {*}
+         */
         renderBindings : function (cid){
 
             var modelBindings = cid ? [this._bindings[cid]] : this._bindings;
@@ -177,6 +231,8 @@
                     self._renderBinding(binding);
                 });
             });
+
+            return this;
         },
 
         _onModelChange : function(model){
@@ -211,7 +267,7 @@
             value = (typeof property === 'function') ? property.apply(model) : model.get(property);
             value = binding.negate ? !(!!value) : value;
 
-            var element = (selector == '') ? this.$el : this.$el.find(selector);
+            var element = (selector == '') ? this.$el : this.$(selector);
 
             if (element.length > 0){
 
@@ -220,36 +276,46 @@
 
                     case '':
                     case 'text':
+                        value = (typeof value !== 'undefined') ? value : '';
                         element.text(value);
+                        console.log("text1: "+element.text());
                         break;
 
                     case 'html':
+                        value = (typeof value !== 'undefined') ? value : '';
                         element.html(value);
                         break;
 
                     case 'value':
                     case 'val' :
+                        value = (typeof value !== 'undefined') ? value : '';
                         element.val(value);
                         break;
 
                     case 'width' :
+                        element.width(value);
+                        console.log(element.width());
+                        break;
+
                     case 'height' :
-                    case 'selectedIndex':
+                        element.height(value);
+                        break;
+
                     case 'selected':
                     case 'checked':
                     case 'readonly' :
                     case 'disabled' :
-                        element.prop(attr, value);
+                        element.prop(attr, !!value);
                         break;
 
                     case 'display':
                     case 'visible':
-                        element.toggle(value);
+                        element.toggle(!!value);
                         break;
 
-
                     default:
-                        element.attr(attr, value);
+                        (typeof value !== 'undefined') ?  element.attr(attr, value) : element.removeAttr(attr);
+                        break;
                 }
             }
             else{
@@ -267,6 +333,7 @@
             var element = Backbone.$(evt.currentTarget);
             var value;
 
+            //noinspection FallthroughInSwitchStatementJS
             switch (attr){
                 case '':
                 case 'text':
@@ -322,18 +389,41 @@
         return Backbone.$.trim(str);
     };
 
-    var logicalOperators = ['==', '===', '!=', '!==', '>', '<', '<=', '>=', '!', '!!', '&', '&&', '|', '||', '+', '-', '*', '/', '%'];
+    var logicalOperators = ['=', '>', '<', '!', '&',  '|', '+', '-', '*', '/', '%', '(', ')'];
 
+    /**
+     * Test if the given value is a logical expression
+     * @param str
+     * @returns {boolean}
+     */
+    var isLogicalExpression = function (str){
+        var hasLogic = false;
+        for (var i=0; i < str.length; i++){
+            var char = str.charAt(i);
+            if ( _.contains(logicalOperators,char)){
+                hasLogic = true;
+            }
+            else if (isNaN(char) && char !== ' '){
+                return false;
+            }
+        }
+        return hasLogic;
+    }
+
+    /**
+     * Parse a given property string into a bindable property object
+     * @param {string} str
+     * @returns {{property: string|function, negate: boolean, triggers: string[]}
+     */
     var parsePropertyObject = function (str){
 
-        var triggers = str.match(/{([^}]*)}/g);
-        var negate = str.charAt(0) == '!';
         var property;
+        var negate = str.charAt(0) == '!';
+        var triggers = str.match(/{([^}]*)}/g);
 
         if (triggers.length && (triggers[0].length == str.length || (negate && triggers[0].length == str.length-1))){
             property = clean(trim(triggers[0]));
             triggers = [property];
-
         }
         else{
             negate = false;
@@ -343,21 +433,25 @@
             });
 
             var split = str.split('{binding}');
+            var parseAsLogic = true;
             var funcStr = 'return ';
 
+            //Determine if we're parsing this return value as a logical expression or a string
             for (var i=0; i < split.length; i++){
+                if (!isLogicalExpression(split[i])){
+                    parseAsLogic = false;
+                    break;
+                }
+            }
 
-               if (split[i].length){
-                   if (_.contains(logicalOperators, trim(split[i]))){
-                       funcStr += split[i];
-                   }
-                   else{
-                       funcStr += (i > 0 ? ' + ' : '') + '"' + _.escape(split[i]) + '"' + (i < triggers.length ? ' + ' : '');
-                   }
+            for (i=0; i < split.length; i++){
+
+                if (split[i].length){
+                    funcStr += (parseAsLogic) ? split[i] : (i > 0 ? ' + ' : '') + '"' + _.escape(split[i]) + '"' + (i < triggers.length ? ' + ' : '');
                 }
 
                 if (i < triggers.length){
-                    funcStr += 'this.get(\''+triggers[i]+'\')';
+                    funcStr += '( this.has(\''+triggers[i]+'\') ? this.get(\''+triggers[i]+'\') : "" )';
                 }
 
             }
@@ -385,6 +479,12 @@
             this.attachBindings(null, false);
         },
 
+        /**
+         * Manually parses and binds all key/value pairs listed in this view's modelBindings object
+         * @param {object[]} [modelBindings]
+         * @param {boolean} [autoRender=true]
+         * @returns {*}
+         */
         attachBindings: function(modelBindings, autoRender) {
 
             modelBindings = modelBindings || _.result(this.options, 'modelBindings') || _.result(this, 'modelBindings');
@@ -545,18 +645,15 @@
             return this;
         },
 
+        /**
+         * Detaches the bindings and associated listeners from this view. Does not usually need to be called,
+         * as bindings should automatically be cleaned up when view is destroyed.
+         * @returns {*}
+         */
         detachBindings : function() {
-
             if (_.isEmpty(this._bindings)) return this;
 
             this.unbindAll();
-
-            if (this.model instanceof Backbone.Collection || this.collection instanceof Backbone.Collection){
-                var collection = this.model || this.collection;
-
-                this.stopListening(collection, "remove");
-                this.stopListening(collection, "reset");
-            }
 
             return this;
         },

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Backbone EZBindings Test Runner</title>
+
+    <link rel="stylesheet" href="../vendor/mocha.css">
+
+    <script src="../vendor/jquery-1.10.2.min.js"></script>
+
+    <script src="../vendor/mocha.js"></script>
+    <script>mocha.setup('bdd')</script>
+
+    <script src="../vendor/chai.js"></script>
+    <script type="text/javascript">
+        window.assert = chai.assert;
+    </script>
+
+    <script src="../vendor/underscore.js"></script>
+    <script src="../vendor/backbone.js"></script>
+    <script src="../backbone.ezbinding.js"></script>
+
+    <script src="ezbinding.spec.js"></script>
+
+    <script>
+        onload = function(){
+            mocha.run();
+        }
+
+    </script>
+
+</head>
+
+<body>
+
+    <div id="mocha"></div>
+
+    <script type="text/template" id="view-template">
+
+        <div id="view">
+            <span id="span" disabled="disabled"></span>
+
+            <input type="text" id="input"/>
+
+            <input type="checkbox" id="checkbox"/>
+
+            <select id="select">
+                <option value="1"></option>
+                <option value="2"></option>
+                <option value="3"></option>
+            </select>
+        </div>
+
+
+    </script>
+
+    <script type="text/template" id="collection-view-template">
+
+        <div id="collection-view">
+
+            <div id="spans">
+                <span id="span1"></span>
+                <span id="span2"></span>
+                <span id="span3"></span>
+                <span id="span4"></span>
+            </div>
+
+            <ul id="list">
+                <li></li>
+                <li></li>
+                <li></li>
+                <br/>
+                <li></li>
+            </ul>
+
+            <ul id="input-list">
+                <li><input type="text"/></li>
+                <li><input type="text"/></li>
+                <li><input type="text"/></li>
+                <br/>
+                <li><input type="text"/></li>
+            </ul>
+        </div>
+
+    </script>
+
+
+</body>
+

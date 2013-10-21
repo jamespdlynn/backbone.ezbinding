@@ -1,0 +1,39 @@
+body{
+    padding: 10px 60px;
+    font-size: 18px;
+    background-color: #efefef;
+}
+
+.view {
+    display: inline-block;
+    vertical-align: top;
+    margin-right: 100px;
+}
+
+.field, ul > li{
+    margin-bottom: 10px;
+}
+
+label{
+    display: inline-block;
+    vertical-align: middle;
+    width: 100px;
+    text-align: right;
+    margin-right: 10px;
+}
+
+input, select{
+    display: inline-block;
+    vertical-align: middle;
+    width: 200px;
+    padding: 5px;
+}
+
+.field > .enabled{
+    width: auto;
+}
+
+ul{
+    list-style-type: circle;
+    padding-left:15px;
+}
